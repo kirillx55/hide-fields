@@ -30,7 +30,7 @@ func HideFields(v any) error {
 
 func hideFields(vOf reflect.Value, hide bool, value string, isMap bool, m, key reflect.Value) error {
 	switch vOf.Kind() {
-	case reflect.Pointer:
+	case reflect.Pointer, reflect.Interface:
 		if err := hideFields(vOf.Elem(), hide, value, isMap, m, key); err != nil {
 			return err
 		}
@@ -80,7 +80,7 @@ func hideFields(vOf reflect.Value, hide bool, value string, isMap bool, m, key r
 			}
 		}
 
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.UnsafePointer, reflect.Uintptr, reflect.Invalid:
+	case reflect.Chan, reflect.Func, reflect.UnsafePointer, reflect.Uintptr, reflect.Invalid:
 
 	case reflect.Map:
 		keys := vOf.MapKeys()
