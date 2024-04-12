@@ -5,6 +5,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"unsafe"
 )
 
 const (
@@ -25,15 +26,18 @@ func HideFields(v any) error {
 		return errNotAPointer
 	}
 
-	return hideFields(reflect.ValueOf(v), false, "", false, reflect.Value{}, reflect.Value{})
+	return hideFields(reflect.ValueOf(v), nil, false, reflect.Value{}, reflect.Value{})
 }
 
-func hideFields(vOf reflect.Value, hide bool, value string, isMap bool, m, key reflect.Value) error {
+func hideFields(vOf reflect.Value, value *string, isMap bool, m, key reflect.Value) error {
 	switch vOf.Kind() {
-	case reflect.Pointer, reflect.Interface:
-		if err := hideFields(vOf.Elem(), hide, value, isMap, m, key); err != nil {
+	case reflect.Pointer:
+		if err := hideFields(vOf.Elem(), value, isMap, m, key); err != nil {
 			return err
 		}
+
+	case reflect.Interface:
+		// todo
 
 	case reflect.Struct:
 		vOfType := vOf.Type()
@@ -48,13 +52,13 @@ func hideFields(vOf reflect.Value, hide bool, value string, isMap bool, m, key r
 				hideValue, hideOk := vOfType.Field(i).Tag.Lookup(tagHide)
 
 				v := value
-				if hide || hideOk {
+				if v != nil || hideOk {
 					wasHide = true
 					if hideOk {
-						v = hideValue
+						v = &hideValue
 					}
 
-					if err := hideFields(emptyStruct.Field(i), hide || hideOk, v, false, m, key); err != nil {
+					if err := hideFields(emptyStruct.Field(i), v, false, m, key); err != nil {
 						return err
 					}
 				}
@@ -72,10 +76,10 @@ func hideFields(vOf reflect.Value, hide bool, value string, isMap bool, m, key r
 
 			v := value
 			if hideOk {
-				v = hideValue
+				v = &hideValue
 			}
 
-			if err := hideFields(vOf.Field(i), hide || hideOk, v, isMap, m, key); err != nil {
+			if err := hideFields(vOf.Field(i), v, isMap, m, key); err != nil {
 				return err
 			}
 		}
@@ -85,14 +89,14 @@ func hideFields(vOf reflect.Value, hide bool, value string, isMap bool, m, key r
 	case reflect.Map:
 		keys := vOf.MapKeys()
 		for i := range keys {
-			if err := hideFields(vOf.MapIndex(keys[i]), hide, value, true, vOf, keys[i]); err != nil {
+			if err := hideFields(vOf.MapIndex(keys[i]), value, true, vOf, keys[i]); err != nil {
 				return err
 			}
 		}
 
 	case reflect.Array, reflect.Slice:
 		for i := 0; i < vOf.Len(); i++ {
-			if err := hideFields(vOf.Index(i), hide, value, false, m, key); err != nil {
+			if err := hideFields(vOf.Index(i), value, false, m, key); err != nil {
 				return err
 			}
 		}
@@ -101,12 +105,12 @@ func hideFields(vOf reflect.Value, hide bool, value string, isMap bool, m, key r
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
 		reflect.Bool, reflect.String:
-		if !hide {
+		if value == nil {
 			return nil
 		}
 
 		if isMap {
-			m.SetMapIndex(key, getDefaultValue(m.MapIndex(key), value))
+			m.SetMapIndex(key, getDefaultValue(m.MapIndex(key), *value))
 
 			return nil
 		}
@@ -115,7 +119,13 @@ func hideFields(vOf reflect.Value, hide bool, value string, isMap bool, m, key r
 			return nil
 		}
 
-		vOf.Set(getDefaultValue(vOf, value))
+		if !vOf.CanSet() {
+			setUnsafe(vOf, getDefaultValue(vOf, *value))
+
+			return nil
+		}
+
+		vOf.Set(getDefaultValue(vOf, *value))
 
 	default:
 		return errUnknownType
@@ -215,4 +225,42 @@ func getDefaultValue(vOf reflect.Value, value string) reflect.Value {
 	}
 
 	return reflect.New(vOf.Type()).Elem()
+}
+
+func setUnsafe(vOf reflect.Value, value reflect.Value) {
+	switch vOf.Kind() {
+	case reflect.Int:
+		*(*int)(unsafe.Pointer(vOf.UnsafeAddr())) = int(value.Int())
+	case reflect.Int8:
+		*(*int8)(unsafe.Pointer(vOf.UnsafeAddr())) = int8(value.Int())
+	case reflect.Int16:
+		*(*int16)(unsafe.Pointer(vOf.UnsafeAddr())) = int16(value.Int())
+	case reflect.Int32:
+		*(*int32)(unsafe.Pointer(vOf.UnsafeAddr())) = int32(value.Int())
+	case reflect.Int64:
+		*(*int64)(unsafe.Pointer(vOf.UnsafeAddr())) = value.Int()
+	case reflect.Uint:
+		*(*uint)(unsafe.Pointer(vOf.UnsafeAddr())) = uint(value.Uint())
+	case reflect.Uint8:
+		*(*uint8)(unsafe.Pointer(vOf.UnsafeAddr())) = uint8(value.Uint())
+	case reflect.Uint16:
+		*(*uint16)(unsafe.Pointer(vOf.UnsafeAddr())) = uint16(value.Uint())
+	case reflect.Uint32:
+		*(*uint32)(unsafe.Pointer(vOf.UnsafeAddr())) = uint32(value.Uint())
+	case reflect.Uint64:
+		*(*uint64)(unsafe.Pointer(vOf.UnsafeAddr())) = value.Uint()
+	case reflect.Uintptr:
+	case reflect.Float32:
+		*(*float32)(unsafe.Pointer(vOf.UnsafeAddr())) = float32(value.Float())
+	case reflect.Float64:
+		*(*float64)(unsafe.Pointer(vOf.UnsafeAddr())) = value.Float()
+	case reflect.Complex64:
+		*(*complex64)(unsafe.Pointer(vOf.UnsafeAddr())) = complex64(value.Complex())
+	case reflect.Complex128:
+		*(*complex128)(unsafe.Pointer(vOf.UnsafeAddr())) = value.Complex()
+	case reflect.String:
+		*(*string)(unsafe.Pointer(vOf.UnsafeAddr())) = value.String()
+	case reflect.Bool:
+		*(*bool)(unsafe.Pointer(vOf.UnsafeAddr())) = value.Bool()
+	}
 }
