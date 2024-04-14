@@ -249,7 +249,6 @@ func setUnsafe(vOf reflect.Value, value reflect.Value) {
 		*(*uint32)(unsafe.Pointer(vOf.UnsafeAddr())) = uint32(value.Uint())
 	case reflect.Uint64:
 		*(*uint64)(unsafe.Pointer(vOf.UnsafeAddr())) = value.Uint()
-	case reflect.Uintptr:
 	case reflect.Float32:
 		*(*float32)(unsafe.Pointer(vOf.UnsafeAddr())) = float32(value.Float())
 	case reflect.Float64:
