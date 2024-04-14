@@ -119,7 +119,7 @@ func hideFields(vOf reflect.Value, value *string, isMap bool, m, key reflect.Val
 			return nil
 		}
 
-		if !vOf.CanSet() {
+		if !vOf.CanSet() && vOf.CanAddr() {
 			setUnsafe(vOf, getDefaultValue(vOf, *value))
 
 			return nil
